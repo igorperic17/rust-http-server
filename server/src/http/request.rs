@@ -1,4 +1,5 @@
 use super::method::Method;
+use crate::http::QueryString;
 use std::convert::TryFrom;
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::str;
@@ -6,19 +7,20 @@ use std::str::Utf8Error;
 
 use std::error::Error;
 
-pub struct Request {
-    pub path: String,
-    pub query_string: Option<String>,
+#[derive(Debug)]
+pub struct Request<'buff> {
+    pub path: &'buff str,
+    pub query_string: Option<QueryString<'buff>>,
     pub method: Method,
 }
 
-impl TryFrom<&[u8]> for Request {
+impl<'buff> TryFrom<&'buff [u8]> for Request<'buff> {
     type Error = ParseError;
-    fn try_from(buf: &[u8]) -> Result<Self, Self::Error> {
+    fn try_from(buf: &'buff [u8]) -> Result<Request<'buff>, Self::Error> {
         let request = str::from_utf8(buf)?;
 
         let (method, request) = get_next_word(request).ok_or(ParseError::InvalidRequest)?;
-        let (path, request) = get_next_word(request).ok_or(ParseError::InvalidRequest)?;
+        let (mut path, request) = get_next_word(request).ok_or(ParseError::InvalidRequest)?;
         let (protocol, _) = get_next_word(request).ok_or(ParseError::InvalidRequest)?;
 
         if protocol != "HTTP/1.1" {
@@ -26,9 +28,27 @@ impl TryFrom<&[u8]> for Request {
         };
 
         let method: Method = method.parse()?;
-        println!("{:?}", method);
 
-        unimplemented!()
+        // let mut query_string = None;
+        // match path.find("?") {
+        //     Some(i) => {
+        //         query_string = Some(&path[i + 1..]);
+        //         path = &path[..i];
+        //     }
+        //     None => {}
+        // }
+
+        let mut query_string: Option<QueryString> = None;
+        if let Some(i) = path.find("?") {
+            query_string = Some(QueryString::from(&path[i + 1..]));
+            path = &path[..i];
+        }
+
+        Ok(Request {
+            method: method,
+            query_string: query_string,
+            path: path,
+        })
     }
 }
 
