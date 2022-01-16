@@ -1,7 +1,5 @@
 #![allow(dead_code)]
 
-use http::Method;
-use http::Request;
 use server::Server;
 use std::env;
 use website_handler::WebsiteHandler;
