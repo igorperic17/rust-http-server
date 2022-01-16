@@ -1,7 +1,16 @@
+use crate::http::ParseError;
 use crate::http::{Request, Response, StatusCode};
 use std::convert::TryFrom;
-use std::io::{Read, Write};
+use std::io::Read;
 use std::net::TcpListener;
+
+pub trait Handler {
+    fn handle_request(&mut self, request: &Request) -> Response;
+    fn handle_bad_request(&mut self, e: &ParseError) -> Response {
+        println!("Failed to parse request {}", e);
+        Response::new(StatusCode::BadRequest, None)
+    }
+}
 
 pub struct Server {
     addr: String,
@@ -12,7 +21,7 @@ impl Server {
         Server { addr: addr }
     }
 
-    pub fn run(&self) {
+    pub fn run(&self, mut handler: impl Handler) {
         let listener = TcpListener::bind(&self.addr).unwrap();
 
         println!("Listening on {}", self.addr);
@@ -25,18 +34,14 @@ impl Server {
                         Ok(_) => {
                             println!("Received request: {}", String::from_utf8_lossy(&buffer));
 
-                            match Request::try_from(&buffer[..]) {
-                                Ok(req) => {
-                                    dbg!("{}", req);
-                                    let response = Response::new(
-                                        StatusCode::OK,
-                                        Some("<h1>IT WORKS!</h1>".to_string()),
-                                    );
-                                    write!(stream, "{}", response);
-                                }
-                                Err(e) => println!("Error parsing request: {}", e),
+                            let response = match Request::try_from(&buffer[..]) {
+                                Ok(req) => handler.handle_request(&req),
+                                Err(e) => handler.handle_bad_request(&e),
+                            };
+
+                            if let Err(e) = response.send(&mut stream) {
+                                println!("Error occured during sending response: {}", e)
                             }
-                            // let res: &Result<Request, _> = &buffer[..].try_into();
                         }
                         Err(e) => println!("Failed to read from connection: {}", e),
                     }
